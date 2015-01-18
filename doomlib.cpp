@@ -37,13 +37,30 @@ static lumpinfo_t	lumpdir[MAX_LUMPS];
 static void		*lumpdata[MAX_LUMPS];
 // fixme: add list of files
 
-void *Doom_Malloc(int numbytes)
+static void *Doom_Malloc(int numbytes)
 {
 	return malloc(numbytes);
 }
 
+static int Doom_AddLump(char name[8], FILE *fp, int filepos, int size)
+{
+	lumpinfo_t	*lumpinfo;
+
+	// allocate an entry from the lump directory
+	lumpinfo = lumpdir + numlumps;
+	numlumps++;
+
+	lumpinfo->fp        	= fp;
+	lumpinfo->filepos	= filepos;
+	lumpinfo->size		= size;
+	strncpy(lumpinfo->name, name, 8);
+
+	return numlumps - 1;
+}
+	
+
 // actually read the bytes of the lump
-void Doom_ReadLump(int lumpnum)
+static void Doom_ReadLump(int lumpnum)
 {
 	lumpinfo_t	*lumpinfo;
 
