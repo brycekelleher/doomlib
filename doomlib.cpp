@@ -1,24 +1,8 @@
+#include "doomlib.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-
-// file structures
-typedef struct
-{
-    // Should be "IWAD" or "PWAD".
-    char	identification[4];
-    int		numlumps;
-    int		infotableofs;
-    
-} wadheader_t;
-
-typedef struct
-{
-    int		filepos;
-    int		size;
-    char	name[8];
-    
-} filelump_t;
 
 // internal structures
 typedef struct
@@ -30,12 +14,14 @@ typedef struct
 } lumpinfo_t;
 
 #define MAX_LUMPS	32 * 1024
+#define MAX_FILES	 1 * 1024
 
 // internal lump data
 static int		numlumps;
 static lumpinfo_t	lumpdir[MAX_LUMPS];
 static void		*lumpdata[MAX_LUMPS];
-// fixme: add list of files
+static int		numfiles;
+static FILE		*files[MAX_FILES];
 
 static void *Doom_Malloc(int numbytes)
 {
@@ -80,56 +66,6 @@ static void Doom_ReadLump(int lumpnum)
 	fread(lumpdata[lumpnum], sizeof(unsigned char), lumpinfo->size, lumpinfo->fp);
 }
 
-void Doom_ReadWadFile(const char *filename)
-{
-	FILE *fp;
-
-	fp = fopen(filename, "rb");
-
-	if(!fp)
-	{
-		printf("Failed to open wad file\n");
-		exit(-1);
-	}
-
-	// read the header
-	wadheader_t header;
-	fread(&header, sizeof(wadheader_t), 1, fp);
-
-	// read the lump info table
-	fseek(fp, header.infotableofs, SEEK_SET);
-
-	// iterate through the lumps and add the directory
-	for(int i = 0; i < header.numlumps; i++)
-	{
-		filelump_t	filelump;
-		lumpinfo_t	*lumpinfo; 
-
-		// read the lump info
-		fread(&filelump, sizeof(filelump_t), 1, fp);
-
-		// allocate an entry from the lump directory
-		lumpinfo = lumpdir + numlumps;
-		numlumps++;
-
-		lumpinfo->fp        = fp;
-		lumpinfo->filepos	= filelump.filepos;
-		lumpinfo->size		= filelump.size;
-		strncpy(lumpinfo->name, filelump.name, 8);
-
-		//printf("lump %08d: name=%-8s pos=%d size=%d\n", i, filelump.name, filelump.filepos, filelump.size);
-	}
-
-	// re-read all the lumps
-	for(int i = 0; i < numlumps; i++)
-	{
-		if(lumpdata[i])
-			continue;
-
-		Doom_ReadLump(i);
-	}
-}
-
 int Doom_LumpLength(int lumpnum)
 {
 	lumpinfo_t *l = lumpdir + lumpnum;
@@ -164,5 +100,74 @@ int Doom_LumpNumFromName(const char *lumpname)
 void *Doom_LumpFromName(const char *lumpname)
 {
 	return Doom_LumpFromNum(Doom_LumpNumFromName(lumpname));
+}
+
+void Doom_ReadWadFile(const char *filename)
+{
+	FILE *fp;
+
+	fp = fopen(filename, "rb");
+
+	if(!fp)
+	{
+		printf("Failed to open wad file\n");
+		exit(-1);
+	}
+
+	files[numfiles] = fp;
+	numfiles++;
+
+	// read the header
+	dwadheader_t header;
+	fread(&header, sizeof(dwadheader_t), 1, fp);
+
+	// read the lump info table
+	fseek(fp, header.infotableofs, SEEK_SET);
+
+	// iterate through the lumps and add the directory
+	for(int i = 0; i < header.numlumps; i++)
+	{
+		dfilelump_t	filelump;
+		lumpinfo_t	*lumpinfo; 
+
+		// read the lump info
+		fread(&filelump, sizeof(dfilelump_t), 1, fp);
+
+		// allocate an entry from the lump directory
+		lumpinfo = lumpdir + numlumps;
+		numlumps++;
+
+		lumpinfo->fp        = fp;
+		lumpinfo->filepos	= filelump.filepos;
+		lumpinfo->size		= filelump.size;
+		strncpy(lumpinfo->name, filelump.name, 8);
+	}
+
+	// re-read all the lumps
+	for(int i = 0; i < numlumps; i++)
+	{
+		if(lumpdata[i])
+			continue;
+
+		Doom_ReadLump(i);
+	}
+}
+
+void Doom_CloseAll()
+{
+	int	i;
+
+	for(i = 0; i < numfiles; i++)
+	{
+		fclose(files[i]);
+	}
+
+	for(i = 0; i < numlumps; i++)
+	{
+		if(!lumpdata[i])
+			continue;
+
+		free(lumpdata[i]);
+	}
 }
 
