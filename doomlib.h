@@ -1,11 +1,10 @@
 #ifndef __DOOMLIB_H__
 #define __DOOMLIB_H__
 
-
 // wad / lump interface
 int Doom_LumpLength(int lumpnum);
-void *Doom_LumpFromNum(int lumpnum);
 int Doom_LumpNumFromName(const char *lumpname);
+void *Doom_LumpFromNum(int lumpnum);
 void *Doom_LumpFromName(const char *lumpname);
 void Doom_ReadWadFile(const char *filename);
 void Doom_CloseAll();
@@ -14,7 +13,7 @@ void Doom_CloseAll();
 #define LINEDEFS_OFFSET		2
 #define	SIDEDEFS_OFFSET		3
 #define VERTICES_OFFSET		4
-#define SSEGS_OFFSET		5
+#define SEGS_OFFSET		5
 #define SSECTORS_OFFSET		6
 #define NODES_OFFSET		7
 #define SECTORS_OFFSET		8
@@ -50,6 +49,12 @@ typedef struct
 
 typedef struct
 {
+	int	xy[2];
+
+} dvertex_t;
+
+typedef struct
+{
 	short	vertices[2];
 	short	pad0;
 	short	pad1;
@@ -77,5 +82,30 @@ typedef struct
 	short	tag;
 
 } dsector_t;
+
+typedef struct
+{ 
+	short	vertices[2];
+	short	angle;
+	short	linedef;
+	short	side;
+	short	offset;
+} dseg_t;
+
+typedef struct
+{
+	short	numsegs;
+	short	startseg;
+
+} dssector_t;
+
+typedef struct
+{
+	short	xy[2];
+	short	dxdy[2];
+	short	bounds[8];
+	short	children[2];
+
+} dnode_t;
 
 #endif

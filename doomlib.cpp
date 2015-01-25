@@ -73,17 +73,6 @@ int Doom_LumpLength(int lumpnum)
 	return l->size;
 }
 
-void *Doom_LumpFromNum(int lumpnum)
-{
-	// range check the lump number
-	if(lumpnum < 0 || lumpnum > numlumps)
-		return NULL;
-
-	Doom_ReadLump(lumpnum);
-	
-	return lumpdata[lumpnum];
-}
-
 int Doom_LumpNumFromName(const char *lumpname)
 {
 	lumpinfo_t	*l;
@@ -95,6 +84,17 @@ int Doom_LumpNumFromName(const char *lumpname)
 	}
 
 	return -1;
+}
+
+void *Doom_LumpFromNum(int lumpnum)
+{
+	// range check the lump number
+	if(lumpnum < 0 || lumpnum > numlumps)
+		return NULL;
+
+	Doom_ReadLump(lumpnum);
+	
+	return lumpdata[lumpnum];
 }
 
 void *Doom_LumpFromName(const char *lumpname)
