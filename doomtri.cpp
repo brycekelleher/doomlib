@@ -23,6 +23,74 @@ static void Error(const char *format, ...)
         exit(1);
 }
 
+// =============================================================
+// triangle code
+
+typedef struct trivert_s
+{
+	float	xyz[3];
+	float	lightlevel;
+
+} trivert_t;
+
+static int	numvertices;
+static int	numindicies;
+static FILE	*binfile;
+
+static void OpenTriangleModelFile(const char *filename)
+{
+	binfile = fopen(filename, "wb");
+	if(!binfile)
+	{
+		Error("Couldn't open model file\n");
+	}
+
+	// reserve space for the vertex count
+	fseek(binfile, 4 , SEEK_SET);
+}
+
+static void CloseTriangleModelFile()
+{
+	// emit the indicies
+	numindicies = numvertices;
+	fwrite(&numindicies, sizeof(int), 1, binfile);
+	for(int i = 0; i < numindicies; i++)
+	{
+		fwrite(&i, sizeof(int), 1, binfile);
+	}
+
+	// write the actual vertex count
+	fseek(binfile, 0 , SEEK_SET);
+	fwrite(&numvertices, sizeof(int), 1, binfile);
+
+	fclose(binfile);
+}
+
+static void EmitBinaryTriangle(trivert_t v0, trivert_t v1, trivert_t v2)
+{
+	// fixme: replace with EmitFloat?
+	fwrite(&v0, sizeof(trivert_t), 1, binfile);
+	fwrite(&v1, sizeof(trivert_t), 1, binfile);
+	fwrite(&v2, sizeof(trivert_t), 1, binfile);
+	fflush(binfile);
+
+	numvertices += 3;
+}
+
+// interface to the triangle code
+static void AddTriangle(trivert_t v0, trivert_t v1, trivert_t v2)
+{
+	//printf("adding triangle:\n");
+	//printf("(%f %f %f)\n", v0.xyz[0], v0.xyz[1], v0.xyz[2]);
+	//printf("(%f %f %f)\n", v1.xyz[0], v1.xyz[1], v1.xyz[2]);
+	//printf("(%f %f %f)\n", v2.xyz[0], v2.xyz[1], v2.xyz[2]);
+
+	EmitBinaryTriangle(v0, v1, v2);
+}
+
+// =============================================================
+// geometry generation code
+
 typedef struct leveldata_s
 {
 	dvertex_t	*vertices;
@@ -33,24 +101,20 @@ typedef struct leveldata_s
 	dssector_t	*ssectors;
 	dnode_t		*nodes;
 
+	int		numnodes;
+
 } leveldata_t;
 
 // fixme:
 static leveldata_t	leveldatastatic;
 static leveldata_t	*leveldata = &leveldatastatic;
 
-static float Fixed1616ToFloat(int fixed)
+static float Fixed16ToFloat(int fixed)
 {
-	float f;
-
-	f = 0;
-	f += (float)(fixed / 0x10000);
-	f += (float)(fixed & 0x0000ffff) / 0x10000;
-	
-	return f;
+	return (float)fixed;
 }
 
-static void GetSidedefsForLinedef(dsidedef_t *s[2], dlinedef_t *l)
+static void SidedefsFromLinedef(dsidedef_t *s[2], dlinedef_t *l)
 {
 	for(int i = 0; i < 2; i++)
 	{
@@ -62,6 +126,16 @@ static void GetSidedefsForLinedef(dsidedef_t *s[2], dlinedef_t *l)
 
 		s[i] = leveldata->sidedefs + l->sidedefs[i];
 	}
+}
+
+static dnode_t *NodeFromNum(int num)
+{
+	return leveldata->nodes + num;
+}
+
+static dsector_t *SectorFromNum(int num)
+{
+	return leveldata->sectors + num;
 }
 
 static void GetLevelData(leveldata_t *d, const char *mapname)
@@ -81,22 +155,8 @@ static void GetLevelData(leveldata_t *d, const char *mapname)
 	d->segs		= (dseg_t*)Doom_LumpFromNum(baselump + SEGS_OFFSET);
 	d->ssectors	= (dssector_t*)Doom_LumpFromNum(baselump + SSECTORS_OFFSET);
 	d->nodes	= (dnode_t*)Doom_LumpFromNum(baselump + NODES_OFFSET);
-}
-
-typedef struct trivert_s
-{
-	float	xyz[3];
-	float	lightlevel;
-
-} trivert_t;
-
-// interface to the triangle code
-static void AddTriangle(trivert_t v0, trivert_t v1, trivert_t v2)
-{
-	printf("adding triangle:\n");
-	printf("(%f %f %f)\n", v0.xyz[0], v0.xyz[1], v0.xyz[2]);
-	printf("(%f %f %f)\n", v1.xyz[0], v1.xyz[1], v1.xyz[2]);
-	printf("(%f %f %f)\n", v2.xyz[0], v2.xyz[1], v2.xyz[2]);
+	
+	d->numnodes	= Doom_LumpLength(baselump + NODES_OFFSET) / sizeof(dnode_t);
 }
 
 static int SegSortFunc(const void *a, const void *b)
@@ -135,13 +195,15 @@ static void SortSegs(dssector_t *ss)
 			i,
 			seg->vertices[0],
 			seg->vertices[1],
-			Fixed1616ToFloat(leveldata->vertices[seg->vertices[0]].xy[0]),
-			Fixed1616ToFloat(leveldata->vertices[seg->vertices[0]].xy[1]),
-			Fixed1616ToFloat(leveldata->vertices[seg->vertices[1]].xy[0]),
-			Fixed1616ToFloat(leveldata->vertices[seg->vertices[1]].xy[1]),
+			Fixed16ToFloat(leveldata->vertices[seg->vertices[0]].xy[0]),
+			Fixed16ToFloat(leveldata->vertices[seg->vertices[0]].xy[1]),
+			Fixed16ToFloat(leveldata->vertices[seg->vertices[1]].xy[0]),
+			Fixed16ToFloat(leveldata->vertices[seg->vertices[1]].xy[1]),
 			seg->offset);
 	}
 }
+
+
 
 //void EmitMiddleWallGeometry()
 //void EmitUpperAndLowerWallGeometry()
@@ -149,103 +211,231 @@ static void SortSegs(dssector_t *ss)
 
 // if single sided, emit middle polygon
 // if double sided emit middle, lower and upper polygon
+static void SegVertexData(float xy[2][2], dseg_t *seg)
+{
+	// get the vertex data for the seg
+	if(seg->side == 0)
+	{
+		xy[0][0] = Fixed16ToFloat(leveldata->vertices[seg->vertices[0]].xy[0]);
+		xy[0][1] = Fixed16ToFloat(leveldata->vertices[seg->vertices[0]].xy[1]);
+		xy[1][0] = Fixed16ToFloat(leveldata->vertices[seg->vertices[1]].xy[0]);
+		xy[1][1] = Fixed16ToFloat(leveldata->vertices[seg->vertices[1]].xy[1]);
+	}
+	else
+	{
+		xy[1][0] = Fixed16ToFloat(leveldata->vertices[seg->vertices[0]].xy[0]);
+		xy[1][1] = Fixed16ToFloat(leveldata->vertices[seg->vertices[0]].xy[1]);
+		xy[0][0] = Fixed16ToFloat(leveldata->vertices[seg->vertices[1]].xy[0]); 
+		xy[0][1] = Fixed16ToFloat(leveldata->vertices[seg->vertices[1]].xy[1]); 
+	}
+
+	float dx, dy;
+	dx = xy[1][0] - xy[0][0];
+	dy = xy[1][1] - xy[0][1];
+
+	// calculate a normal for the linedef
+	float nx, ny;
+	nx = dx / sqrtf((dx * dx) + (dy * dy));
+	ny = dy / sqrtf((dx * dx) + (dy * dy));
+
+	//xy[0][0] += (nx * seg->offset);
+	//xy[0][1] += (ny * seg->offset);
+
+	//xy[0][0] += sqrt((seg->offset * seg->offset) - (dy * dy));
+	//xy[0][1] += sqrt((seg->offset * seg->offset) - (dx * dx));
+	//float length = sqrtf((dx * dx) + (dy * dy));
+	//xy[0][0] += dx * (seg->offset / length);
+	//xy[0][1] += dy * (seg->offset / length);
+}
+
+// fixme: could reverse test
+static void EmitMiddleWallGeometry(dseg_t *seg)
+{
+	dlinedef_t *ld		= leveldata->linedefs + seg->linedef;
+	dsidedef_t *sd		= leveldata->sidedefs + ld->sidedefs[seg->side];
+	dsector_t *sector	= leveldata->sectors + sd->sector;
+
+	if(sd->textures[2][0] != '-')
+	{
+		// get the seg vertex data
+		float xy[2][2];
+		SegVertexData(xy, seg);
+		
+		// build the 4 triverts that we need
+		trivert_t	trivert[4];
+
+		trivert[0].xyz[0]	= xy[0][0];
+		trivert[0].xyz[1]	= xy[0][1];
+		trivert[0].xyz[2]	= sector->ceiling;
+		trivert[0].lightlevel	= sector->lightlevel;
+
+		trivert[1].xyz[0]	= xy[0][0];
+		trivert[1].xyz[1]	= xy[0][1];
+		trivert[1].xyz[2]	= sector->floor;
+		trivert[1].lightlevel	= sector->lightlevel;
+
+		trivert[2].xyz[0]	= xy[1][0];
+		trivert[2].xyz[1]	= xy[1][1];
+		trivert[2].xyz[2]	= sector->ceiling;
+		trivert[2].lightlevel	= sector->lightlevel;
+
+		trivert[3].xyz[0]	= xy[1][0];
+		trivert[3].xyz[1]	= xy[1][1];
+		trivert[3].xyz[2]	= sector->floor;
+		trivert[3].lightlevel	= sector->lightlevel;
+
+		// this is the order for a triangle strip
+		//AddTriangle(trivert[0], trivert[1], trivert[2]);
+		//AddTriangle(trivert[1], trivert[2], trivert[3]);
+
+		// triangle soup, counter clockwise wound
+		AddTriangle(trivert[0], trivert[1], trivert[2]);
+		AddTriangle(trivert[3], trivert[2], trivert[1]);
+	}
+
+}
+
+static void EmitUpperAndLowerWallGeometry(dseg_t *seg)
+{
+	dsidedef_t *sd[2];
+	dsector_t *sectors[2];
+
+	// only emit if this is a double sided line
+	dlinedef_t *ld		= leveldata->linedefs + seg->linedef;
+
+	if(ld->sidedefs[1] == -1)
+		return;
+
+	if(seg->side == 0)
+	{
+		sd[0]		= leveldata->sidedefs + ld->sidedefs[0];
+		sd[1]		= leveldata->sidedefs + ld->sidedefs[1];
+	}
+	else
+	{
+		sd[1]		= leveldata->sidedefs + ld->sidedefs[0];
+		sd[0]		= leveldata->sidedefs + ld->sidedefs[1];
+	}
+
+	sectors[0]	= leveldata->sectors + sd[0]->sector;
+	sectors[1]	= leveldata->sectors + sd[1]->sector;
+
+	if((sectors[0]->floor < sectors[1]->floor)) // && sd[0]->textures[1][0] != '-')
+	{
+		// build the 4 triverts that we need
+		trivert_t	trivert[4];
+
+		// get the seg vertex data
+		float xy[2][2];
+		SegVertexData(xy, seg);
+
+		trivert[0].xyz[0]	= xy[0][0];
+		trivert[0].xyz[1]	= xy[0][1];
+		trivert[0].xyz[2]	= sectors[1]->floor;
+		trivert[0].lightlevel	= sectors[0]->lightlevel;
+
+		trivert[1].xyz[0]	= xy[0][0];
+		trivert[1].xyz[1]	= xy[0][1];
+		trivert[1].xyz[2]	= sectors[0]->floor;
+		trivert[1].lightlevel	= sectors[0]->lightlevel;
+
+		trivert[2].xyz[0]	= xy[1][0];
+		trivert[2].xyz[1]	= xy[1][1];
+		trivert[2].xyz[2]	= sectors[1]->floor;
+		trivert[2].lightlevel	= sectors[0]->lightlevel;
+
+		trivert[3].xyz[0]	= xy[1][0];
+		trivert[3].xyz[1]	= xy[1][1];
+		trivert[3].xyz[2]	= sectors[0]->floor;
+		trivert[3].lightlevel	= sectors[0]->lightlevel;
+
+		//AddTriangle(trivert[0], trivert[1], trivert[2]);
+		//AddTriangle(trivert[1], trivert[2], trivert[3]);
+
+		// triangle soup, counter clockwise wound
+		AddTriangle(trivert[0], trivert[1], trivert[2]);
+		AddTriangle(trivert[3], trivert[2], trivert[1]);
+	}
+
+	if((sectors[0]->ceiling > sectors[1]->ceiling)) // && sd[0]->textures[0][0] != '-')
+	{
+		// build the 4 triverts that we need
+		trivert_t	trivert[4];
+
+		// get the seg vertex data
+		float xy[2][2];
+		SegVertexData(xy, seg);
+
+		trivert[0].xyz[0]	= xy[0][0];
+		trivert[0].xyz[1]	= xy[0][1];
+		trivert[0].xyz[2]	= sectors[1]->ceiling;
+		trivert[0].lightlevel	= sectors[0]->lightlevel;
+
+		trivert[1].xyz[0]	= xy[0][0];
+		trivert[1].xyz[1]	= xy[0][1];
+		trivert[1].xyz[2]	= sectors[0]->ceiling;
+		trivert[1].lightlevel	= sectors[0]->lightlevel;
+
+		trivert[2].xyz[0]	= xy[1][0];
+		trivert[2].xyz[1]	= xy[1][1];
+		trivert[2].xyz[2]	= sectors[1]->ceiling;
+		trivert[2].lightlevel	= sectors[0]->lightlevel;
+
+		trivert[3].xyz[0]	= xy[1][0];
+		trivert[3].xyz[1]	= xy[1][1];
+		trivert[3].xyz[2]	= sectors[0]->ceiling;
+		trivert[3].lightlevel	= sectors[0]->lightlevel;
+
+		//AddTriangle(trivert[0], trivert[1], trivert[2]);
+		//AddTriangle(trivert[1], trivert[2], trivert[3]);
+
+		// triangle soup, counter clockwise wound
+		AddTriangle(trivert[0], trivert[1], trivert[2]);
+		AddTriangle(trivert[3], trivert[2], trivert[1]);
+	}
+}
+
 static void ProcessSubSector(dssector_t *ss)
 {
-	//printf("processing subsector:\n");
+	int i;
 
-	dseg_t *seg	= leveldata->segs + ss->startseg;
-		
-	for(int i = 0; i < ss->numsegs; i++, seg++)
+#if 0
 	{
-		//printf( "%i, (%i %i), start=(%f, %f), end=(%f, %f), offset=%i\n",
-		//	i,
-		//	seg->vertices[0],
-		//	seg->vertices[1],
-		//	Fixed1616ToFloat(leveldata->vertices[seg->vertices[0]].xy[0]),
-		//	Fixed1616ToFloat(leveldata->vertices[seg->vertices[0]].xy[1]),
-		//	Fixed1616ToFloat(leveldata->vertices[seg->vertices[1]].xy[0]),
-		//	Fixed1616ToFloat(leveldata->vertices[seg->vertices[1]].xy[1]),
-		//	seg->offset);
-
-		dlinedef_t *ld		= leveldata->linedefs + seg->linedef;
-		dsidedef_t *sd		= leveldata->sidedefs + ld->sidedefs[seg->side];
-		dsector_t *sector	= leveldata->sectors + sd->sector;
-
-		bool doublesided = (ld->sidedefs[1] != -1);
-
-		// middle wall
-		if(sd->textures[2][0] != '-')
+		printf("ssector: ------------------------------------\n");
+		dseg_t *seg	= leveldata->segs + ss->startseg;
+		for(i = 0; i < ss->numsegs; i++, seg++)
 		{
-			// emit middle polygons
-			float xy[2][2];
-
-			// get the vertex data for the seg
-			if(seg->side == 0)
-			{
-				xy[0][0] = Fixed1616ToFloat(leveldata->vertices[seg->vertices[0]].xy[0]);
-				xy[0][1] = Fixed1616ToFloat(leveldata->vertices[seg->vertices[0]].xy[1]);
-				xy[1][0] = Fixed1616ToFloat(leveldata->vertices[seg->vertices[1]].xy[0]);
-				xy[1][1] = Fixed1616ToFloat(leveldata->vertices[seg->vertices[1]].xy[1]);
-			}
-			else
-			{
-				xy[1][0] = Fixed1616ToFloat(leveldata->vertices[seg->vertices[0]].xy[0]);
-				xy[1][1] = Fixed1616ToFloat(leveldata->vertices[seg->vertices[0]].xy[1]);
-				xy[0][0] = Fixed1616ToFloat(leveldata->vertices[seg->vertices[1]].xy[0]); 
-				xy[0][1] = Fixed1616ToFloat(leveldata->vertices[seg->vertices[1]].xy[1]); 
-			}
-
-			float dx, dy;
-			dx = xy[1][0] - xy[0][0];
-			dy = xy[1][1] - xy[0][1];
-			
-			// calculate a normal for the linedef
-			float nx, ny;
-			nx = dx / sqrtf((dx * dx) + (dy * dy));
-			ny = dy / sqrtf((dx * dx) + (dy * dy));
-
-			xy[0][0] += (nx * seg->offset);
-			xy[0][1] += (ny * seg->offset);
-	
-			float lightlevel	= sector->lightlevel;
-			// build the 4 triverts that we need
-			trivert_t	trivert[4];
-
-			trivert[0].xyz[0]	= xy[0][0];
-			trivert[0].xyz[1]	= xy[0][1];
-			trivert[0].xyz[2]	= sector->ceiling;
-			trivert[0].lightlevel	= lightlevel;
-
-			trivert[1].xyz[0]	= xy[1][0];
-			trivert[1].xyz[1]	= xy[1][1];
-			trivert[1].xyz[2]	= sector->floor;
-			trivert[1].lightlevel	= lightlevel;
-
-			trivert[2].xyz[0]	= xy[0][0];
-			trivert[2].xyz[1]	= xy[0][1];
-			trivert[2].xyz[2]	= sector->ceiling;
-			trivert[2].lightlevel	= lightlevel;
-
-			trivert[3].xyz[0]	= xy[1][0];
-			trivert[3].xyz[1]	= xy[1][1];
-			trivert[3].xyz[2]	= sector->floor;
-			trivert[3].lightlevel	= lightlevel;
-
-			AddTriangle(trivert[0], trivert[1], trivert[2]);
-			AddTriangle(trivert[1], trivert[2], trivert[3]);
+			dlinedef_t *ld = leveldata->linedefs + seg->linedef;
+			printf("seg: %i: vertices=(%i %i) levertices(%i %i) offset=%i\n",
+					i,
+					seg->vertices[0],
+					seg->vertices[1],
+					ld->vertices[0],
+					ld->vertices[1],
+					seg->offset);
 		}
+	}
+#endif	
 
-		if(doublesided)
+	{
+		dseg_t *seg	= leveldata->segs + ss->startseg;
+		for(i = 0; i < ss->numsegs; i++, seg++)
 		{
-			// if this sectors floor height is lower than the other side emit a lower polygon
-			// if this sectors ceiling height is greater than the other side emit an upper polygon
+			EmitMiddleWallGeometry(seg);
 		}
 	}
 
-	printf("\n");
+	{
+		dseg_t *seg	= leveldata->segs + ss->startseg;
+		for(i = 0; i < ss->numsegs; i++, seg++)
+		{
+			EmitUpperAndLowerWallGeometry(seg);
+		}
+	}
+
 }
 
-static void WalkNodes(short nodenum)
+static void WalkNodesRecursive(short nodenum)
 {
 	if(nodenum & 0x8000)
 	{
@@ -253,52 +443,22 @@ static void WalkNodes(short nodenum)
 
 		// this is a subsector
 		ProcessSubSector(leveldata->ssectors + (nodenum & 0x7fff));
+
 		return;
 	}
 
 	dnode_t	*n = leveldata->nodes + nodenum;
 
-	WalkNodes(n->children[0]);
-	WalkNodes(n->children[1]);
+	WalkNodesRecursive(n->children[0]);
+	WalkNodesRecursive(n->children[1]);
 }
 
-#if 0
-static void WalkNodes(dnode_t *n)
+static void WalkNodes()
 {
-	if(!(n->children[0] & (0x8000)))
-	{
-		WalkNodes(leveldata->nodes + (n->children[0] & 0x7fff));
-	}
-	if(!(n->children[0] & (0x8000)))
-	{
-		WalkNodes(leveldata->nodes + (n->children[0] & 0x7fff));
-	}
-
-	// this is a sub-sector
-}
-#endif
-
-#if 0
-// walk all the sectors as we want to generate data in order to maxmise the possibility of stripping
-static void ProcessLinedefs(dsector_t* s)
-{
-	linedef_t *ld;
-	sidedef_t *sd[2];
+	//WalkNodesRecursive(0);
 	
-
-	l->sidedefs
-
-	if(!sd[1])
-	{
-		// emit a wall triangle
-	}
+	WalkNodesRecursive(leveldata->numnodes - 1);
 }
-
-static void GenerateData()
-{
-	void ProcessSector(s);
-}
-#endif
 
 static void PrintUsage()
 {
@@ -317,8 +477,14 @@ int main(int argc, const char * argv[])
 
 	GetLevelData(leveldata, argv[2]);
 
-	WalkNodes(0);
-	
+	{
+		OpenTriangleModelFile("tris.mdl");
+		
+		WalkNodes();
+
+		CloseTriangleModelFile();
+	}
+
 	Doom_CloseAll();
 	
 	return 0;

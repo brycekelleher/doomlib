@@ -49,7 +49,7 @@ typedef struct
 
 typedef struct
 {
-	int	xy[2];
+	short	xy[2];
 
 } dvertex_t;
 
