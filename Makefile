@@ -1,5 +1,7 @@
-all: dumpmap
+all: lswad dumpwad dumpmap
 
+lswad: lswad.o doomlib.o
+dumpwad: dumpwad.o doomlib.o
 dumpmap: dumpmap.o doomlib.o
 
 clean:

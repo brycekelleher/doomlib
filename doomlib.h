@@ -8,6 +8,7 @@ void *Doom_LumpFromNum(int lumpnum);
 int Doom_LumpNumFromName(const char *lumpname);
 void *Doom_LumpFromName(const char *lumpname);
 void Doom_ReadWadFile(const char *filename);
+void Doom_IterateLumps(void (*callback)(int lumpnum, char name[8], int size));
 void Doom_CloseAll();
 
 #define THINGS_OFFSET		1
