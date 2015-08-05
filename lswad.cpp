@@ -26,16 +26,11 @@ void IterateCallback(int lumpnum, char name[8], int size)
 	printf("%4i \%-12.8s %i / %#x\n", lumpnum, name, size, size);
 }
 
-static void PrintUsage()
-{
-	printf("lswad <wadfile>\n");
-}
-
 int main(int argc, const char * argv[])
 {
-	if(argc == 1)
+	if(argc < 2)
 	{
-		PrintUsage();
+		printf("lswad <wadfile>\n");
 		exit(0);
 	}
 

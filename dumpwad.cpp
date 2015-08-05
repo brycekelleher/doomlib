@@ -21,11 +21,6 @@ static void Error(const char *format, ...)
         exit(1);
 }
 
-static void PrintUsage()
-{
-	printf("dumpwad <wadfile> <lumpname>\n");
-}
-
 static void DumpLump(int lumpnum)
 {
 	FILE *fp = stdout;
@@ -44,9 +39,9 @@ static void DumpLump(int lumpnum)
 
 int main(int argc, const char * argv[])
 {
-	if(argc == 1)
+	if(argc < 3)
 	{
-		PrintUsage();
+		printf("dumpwad <wadfile> <lumpnum>\n");
 		exit(0);
 	}
 
