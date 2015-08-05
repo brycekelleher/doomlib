@@ -153,6 +153,14 @@ void Doom_ReadWadFile(const char *filename)
 	}
 }
 
+void Doom_IterateLumps(void (*callback)(int lumpnum, char name[8], int size))
+{
+	lumpinfo_t	*l;
+
+	for(l = lumpdir; l < lumpdir + numlumps; l++)
+		callback(l - lumpdir, l->name, l->size);
+}
+
 void Doom_CloseAll()
 {
 	int	i;
