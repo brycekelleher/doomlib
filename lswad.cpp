@@ -23,7 +23,7 @@ static void Error(const char *format, ...)
 
 void IterateCallback(int lumpnum, char name[8], int size)
 {
-	printf("%4i \%-12.8s %i / %#x\n", lumpnum, name, size, size);
+	printf("%4i %-12.8s %i / %#x\n", lumpnum, name, size, size);
 }
 
 int main(int argc, const char * argv[])
