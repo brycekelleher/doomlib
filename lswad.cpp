@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdarg.h>
 #include "doomlib.h"
 
 void IterateCallback(int lumpnum, char name[8], int size)
