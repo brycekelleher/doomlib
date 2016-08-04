@@ -4,10 +4,12 @@
 
 static const char *palfilename = "PLAYPAL.bin";
 static const char *sprfilename = NULL;
-static const char *outfilename = "out.rgba";
+//static const char *outfilename = "out.rgba";
+static const char *outfilename = NULL;
 
 static FILE* palfp = NULL;
 static FILE* sprfp = stdin;
+static FILE* outfp = stdout;
 
 static char palette[256][3];
 
@@ -128,18 +130,23 @@ static void PutSurfacePixel(int x, int y, unsigned char rgba[4])
 
 static void EmitSurface()
 {
-	FILE *fp = fopen(outfilename, "wb");
+	if (outfilename)
+	{
+		outfp = fopen(outfilename, "wb");
+		if (!outfp)
+			Error("failed to open output file \"%s\"\n", outfilename);
+	}
 
 	for (int i = 0; i < w * h; i++)
 	{
 		int addr = i * 4;
-		Write8(surface[addr + 0], fp);
-		Write8(surface[addr + 1], fp);
-		Write8(surface[addr + 2], fp);
-		Write8(surface[addr + 3], fp);
+		Write8(surface[addr + 0], outfp);
+		Write8(surface[addr + 1], outfp);
+		Write8(surface[addr + 2], outfp);
+		Write8(surface[addr + 3], outfp);
 	}
 
-	fclose(fp);
+	fclose(outfp);
 }
 
 
