@@ -140,6 +140,7 @@ static void EmitSurface()
 	for (int i = 0; i < w * h; i++)
 	{
 		int addr = i * 4;
+
 		Write8(surface[addr + 0], outfp);
 		Write8(surface[addr + 1], outfp);
 		Write8(surface[addr + 2], outfp);
