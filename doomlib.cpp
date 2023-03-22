@@ -287,6 +287,13 @@ int Wad_LumpNumFromName(wadfile_t *wadfile, const char *lumpname)
         return -1;
 }
 
+void Wad_ReadLumpIntoBuffer(wadfile_t *wadfile, int lumpnum, void *buffer)
+{
+        lumpinfo_t* lumpinfo = wadfile->lumpinfo + lumpnum;
+        fseek(wadfile->fp, lumpinfo->filepos, SEEK_SET);
+        fread(buffer, lumpinfo->size, 1, wadfile->fp);
+}
+
 void* Wad_ReadLump(wadfile_t *wadfile, int lumpnum)
 {
         lumpinfo_t* lumpinfo = wadfile->lumpinfo + lumpnum;

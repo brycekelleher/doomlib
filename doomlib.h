@@ -24,6 +24,7 @@ const char* Wad_LumpName(wadfile_t *wadfile, int lumpnum);
 int Wad_LumpNumFromName(wadfile_t *wadfile, const char *lumpname);
 
 // read wad data
+void Wad_ReadLumpIntoBuffer(wadfile_t *wadfile, int lumpnum, void *buffer);
 void* Wad_ReadLump(wadfile_t *wadfile, int lumpnum);
 void Wad_FreeLump(unsigned char *data);
 
