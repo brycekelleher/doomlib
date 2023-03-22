@@ -21,35 +21,55 @@ static void Error(const char *format, ...)
         exit(1);
 }
 
-static void DumpLump(int lumpnum)
+static void DumpLump(wadfile_t *wadfile, int lumpnum)
 {
 	FILE *fp = stdout;
 
-	int length = Doom_LumpLength(lumpnum);
-	if(!length || length == -1)
-		Error("invalid lump number\n");
+	int size = Wad_LumpSize(wadfile, lumpnum);
+	if(!size || size == -1) {
+		Error("invalid lump size\n");
+	}
 
-	unsigned char *data = (unsigned char*)Doom_LumpFromNum(lumpnum);
-	if(!data)
+	// read the data block
+	unsigned char *data = (unsigned char*)Wad_ReadLump(wadfile, lumpnum);
+	if(!data) {
 		Error("couldn't read lump data\n");
+	}
 
-	while(length--)
-		fputc(*data++, fp);
+	// dump the data out
+	unsigned char *p = data;
+	while(size--) {
+		fputc(*p++, fp);
+	}
+
+	Wad_FreeLump(data);
 }
 
 int main(int argc, const char * argv[])
 {
-	if(argc < 3)
-	{
-		printf("dumpwad <wadfile> <lumpnum>\n");
+	if(argc < 3) {
+		printf("dumpwad <wadfile> <lumpname>\n");
 		exit(0);
 	}
 
-	Doom_ReadWadFile(argv[1]);
+	//Doom_ReadWadFile(argv[1]);
+	// open the wad file
+	wadfile_t *wadfile = Wad_Open(argv[1]);
+	if (!wadfile) {
+		Error("failed to open wad file \'%s\'\n", argv[1]);
+		return 1;
+	}
 
-	DumpLump(atoi(argv[2]));
+	for (int i = 2; i < argc; i++) {
+		int lumpnum = Wad_LumpNumFromName(wadfile, argv[i]);
+		if (lumpnum == -1) {
+			Error("couldn't find lump %s\n", argv[i]);
+		}
 
-	Doom_CloseAll();
+		DumpLump(wadfile, lumpnum);
+	}
+
+	Wad_Close(wadfile);
 	
 	return 0;
 }

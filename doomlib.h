@@ -10,6 +10,23 @@ void Doom_ReadWadFile(const char *filename);
 void Doom_IterateLumps(void (*callback)(int lumpnum, char name[8], int size));
 void Doom_CloseAll();
 
+typedef struct wadfile_s wadfile_t;
+
+// open and close wad files
+wadfile_t *Wad_Open(const char *filename);
+void Wad_Close(wadfile_t *wadfile);
+
+// wad lump info
+int Wad_NumLumps(wadfile_t *wadfile);
+int Wad_LumpSize(wadfile_t *wadfile, int lumpnum);
+int Wad_LumpOffset(wadfile_t *wadfile, int lumpnum);
+const char* Wad_LumpName(wadfile_t *wadfile, int lumpnum);
+int Wad_LumpNumFromName(wadfile_t *wadfile, const char *lumpname);
+
+// read wad data
+void* Wad_ReadLump(wadfile_t *wadfile, int lumpnum);
+void Wad_FreeLump(unsigned char *data);
+
 #define THINGS_OFFSET		1
 #define LINEDEFS_OFFSET		2
 #define	SIDEDEFS_OFFSET		3
@@ -25,7 +42,7 @@ void Doom_CloseAll();
 typedef struct
 {
     // Should be "IWAD" or "PWAD".
-    char	identification[4];
+    char	id[4];
     int		numlumps;
     int		infotableofs;
     
